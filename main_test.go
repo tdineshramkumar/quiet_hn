@@ -9,30 +9,12 @@ import (
 
 func Test(t *testing.T) {
 	numStories := 30
-	var client hn.Client
 	obtained := make(chan hn.Result)
 	go func() {
-		obtained <- <-TopStories(numStories)
+		obtained <- <-TopStoriesParallel(numStories)
 	}()
 	go func() {
-		result := client.TopItems()
-		if result.Error != nil {
-			obtained <- result
-			return
-		}
-		ids := result.Value.([]int)
-		stories := make([]Item, 0, numStories)
-		for _, id := range ids {
-			r := client.GetItem(id)
-			item := r.Value.(hn.Item)
-			if r.Error == nil && IsStoryLink(item) {
-				stories = append(stories, ParseHNItem(item))
-				if len(stories) >= numStories {
-					break
-				}
-			}
-		}
-		obtained <- hn.Result{stories, nil}
+		obtained <- <-TopStoriesSequential(numStories)
 	}()
 	val1 := <-obtained
 	val2 := <-obtained

@@ -13,13 +13,26 @@ import (
 	"github.com/t-drk/quiet_hn_1/hn"
 )
 
+var (
+	Cache       bool
+	Parallelize bool
+	TopStories  func(int) <-chan hn.Result
+)
+
 func main() {
 	// parse flags
 	var port, numStories int
 	flag.IntVar(&port, "port", 3000, "the port to start the web server on")
 	flag.IntVar(&numStories, "num_stories", 30, "the number of top stories to display")
+	flag.BoolVar(&Cache, "cache", false, "enable caching of hn")
+	flag.BoolVar(&Parallelize, "parallel", false, "enable parallel load of hn")
 	flag.Parse()
-
+	fmt.Printf("Server Configuration: Caching:%v Parallelize:%v", Cache, Parallelize)
+	if Parallelize {
+		TopStories = TopStoriesParallel
+	} else {
+		TopStories = TopStoriesSequential
+	}
 	tpl := template.Must(template.ParseFiles("./index.gohtml"))
 	http.HandleFunc("/", handler(numStories, tpl))
 
@@ -29,6 +42,27 @@ func main() {
 
 func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	request := make(chan chan []Item)
+	if !Cache {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			result := <-TopStories(numStories)
+			if result.Error != nil {
+				http.Error(w, "Failed to load top stores", http.StatusInternalServerError)
+				return
+			}
+
+			stories := result.Value.([]Item)
+			data := templateData{
+				Stories: stories,
+				Time:    time.Now().Sub(start),
+			}
+			err := tpl.Execute(w, data)
+			if err != nil {
+				http.Error(w, "Failed to process the template", http.StatusInternalServerError)
+				return
+			}
+		})
+	}
 	go loadTopStories(numStories, request)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// fmt.Println("Request", r)
@@ -53,9 +87,10 @@ func handler(numStories int, tpl *template.Template) http.HandlerFunc {
 	})
 }
 
+// Refresh and Expire Time in case Server Caches
 const (
-	expireTime  = 15 // in seconds
-	refreshTime = 10 // in seconds
+	expireTime  = 900 // in seconds
+	refreshTime = 600 // in seconds
 )
 
 // loadTopStories is an asynchronous task which maintains the top stories cache and
@@ -113,13 +148,43 @@ func loadTopStories(numStories int, request <-chan chan []Item) {
 
 }
 
+func TopStoriesSequential(numStories int) <-chan hn.Result {
+	out := make(chan hn.Result)
+	go func() {
+		start := time.Now()
+		client := new(hn.Client)
+		topItems := client.TopItems()
+		if topItems.Error != nil {
+			out <- hn.Result{nil, topItems.Error}
+			return
+		}
+		ids := topItems.Value.([]int)
+		stories := make([]Item, 0, numStories)
+		for _, id := range ids {
+			result := client.GetItem(id)
+			item := result.Value.(hn.Item)
+			if result.Error == nil && IsStoryLink(item) {
+				stories = append(stories, ParseHNItem(item))
+				if len(stories) >= numStories {
+					break
+				}
+			}
+		}
+		fmt.Println("Took time to Get Top Stories Sequentially \n.", time.Now().Sub(start))
+		out <- hn.Result{stories, nil}
+	}()
+	return out
+
+}
+
+// Parallel Server configuration variables
 const (
-	numRoutines = 40
-	replication = 4
+	numRoutines = 50
+	replication = 2
 )
 
-// TopStories fetches hn top stories asynchronously and returns them through a channel
-func TopStories(numStories int) <-chan hn.Result {
+// TopStoriesParallel fetches hn top stories asynchronously and returns them through a channel
+func TopStoriesParallel(numStories int) <-chan hn.Result {
 	out := make(chan hn.Result)
 	go func() {
 		start := time.Now()
@@ -136,7 +201,7 @@ func TopStories(numStories int) <-chan hn.Result {
 			go processor(c, ids, items, quit)
 		}
 		stories := aggregator(numStories, topItems.Value.([]int), items, quit)
-		fmt.Println("Took time to refresh cache.\n", time.Now().Sub(start))
+		fmt.Println("Took time to Get Top Stories IN Parallel\n.", time.Now().Sub(start))
 		out <- hn.Result{stories, nil}
 	}()
 	return out
