@@ -190,6 +190,7 @@ func TopStoriesParallel(numStories int) <-chan hn.Result {
 		start := time.Now()
 		c := new(hn.Client)
 		topItems := multiCaller(c.TopItems, replication)
+		fmt.Println("Got Top Items.")
 		if topItems.Error != nil {
 			out <- hn.Result{nil, topItems.Error}
 			return
@@ -200,6 +201,7 @@ func TopStoriesParallel(numStories int) <-chan hn.Result {
 		for i := 0; i < numRoutines; i++ {
 			go processor(c, ids, items, quit)
 		}
+		fmt.Println("Waiting for Aggregator")
 		stories := aggregator(numStories, topItems.Value.([]int), items, quit)
 		fmt.Println("Took time to Get Top Stories IN Parallel\n.", time.Now().Sub(start))
 		out <- hn.Result{stories, nil}
@@ -238,6 +240,7 @@ func processor(c *hn.Client, ids <-chan int, out chan<- hn.Result, quit <-chan b
 			if !ok {
 				// Don't Send
 				// Wait for processed items to be sent..
+				fmt.Println("No More IDS to read")
 				ids = nil
 				continue
 			}
@@ -277,6 +280,7 @@ func aggregator(numStories int, ids []int, items <-chan hn.Result, quit chan<- b
 				count++
 			}
 		}
+		fmt.Printf("[C:%d]", count)
 		if count >= numStories {
 			i := 0
 			for _, id := range ids {
@@ -295,7 +299,7 @@ func aggregator(numStories int, ids []int, items <-chan hn.Result, quit chan<- b
 
 }
 
-const multiCallerTimeout = 20 // the timeout (seconds) for multicaller so that it can retry
+const multiCallerTimeout = 10 // the timeout (seconds) for multicaller so that it can retry
 // multiCaller runs the given function in mutliple goroutines and
 // returns the return value of the fastest gorouting
 func multiCaller(f func() hn.Result, n int) hn.Result {
