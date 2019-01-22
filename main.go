@@ -258,7 +258,9 @@ func aggregator(numStories int, ids []int, items <-chan hn.Result, quit chan<- b
 	valid := make(map[int]bool)
 	got := make(map[int]hn.Item)
 	var stories []Item
-	for result := range items {
+	//for result := range items {
+	for _ = range ids {
+		result := <-items
 		item := result.Value.(hn.Item)
 		if result.Error != nil || !IsStoryLink(item) {
 			valid[item.ID] = false
