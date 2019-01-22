@@ -240,6 +240,7 @@ func processor(c *hn.Client, ids <-chan int, out chan<- hn.Result, quit <-chan b
 			if !ok {
 				// Don't Send
 				// Wait for processed items to be sent..
+				fmt.Println("No More IDS to read")
 				ids = nil
 				continue
 			}
