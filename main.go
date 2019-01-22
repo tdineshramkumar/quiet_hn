@@ -277,6 +277,7 @@ func aggregator(numStories int, ids []int, items <-chan hn.Result, quit chan<- b
 				count++
 			}
 		}
+		fmt.Printf("[C:%d]", count)
 		if count >= numStories {
 			i := 0
 			for _, id := range ids {
@@ -295,7 +296,7 @@ func aggregator(numStories int, ids []int, items <-chan hn.Result, quit chan<- b
 
 }
 
-const multiCallerTimeout = 20 // the timeout (seconds) for multicaller so that it can retry
+const multiCallerTimeout = 10 // the timeout (seconds) for multicaller so that it can retry
 // multiCaller runs the given function in mutliple goroutines and
 // returns the return value of the fastest gorouting
 func multiCaller(f func() hn.Result, n int) hn.Result {
