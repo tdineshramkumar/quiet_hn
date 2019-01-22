@@ -190,6 +190,7 @@ func TopStoriesParallel(numStories int) <-chan hn.Result {
 		start := time.Now()
 		c := new(hn.Client)
 		topItems := multiCaller(c.TopItems, replication)
+		fmt.Println("Got Top Items.")
 		if topItems.Error != nil {
 			out <- hn.Result{nil, topItems.Error}
 			return
@@ -200,6 +201,7 @@ func TopStoriesParallel(numStories int) <-chan hn.Result {
 		for i := 0; i < numRoutines; i++ {
 			go processor(c, ids, items, quit)
 		}
+		fmt.Println("Waiting for Aggregator")
 		stories := aggregator(numStories, topItems.Value.([]int), items, quit)
 		fmt.Println("Took time to Get Top Stories IN Parallel\n.", time.Now().Sub(start))
 		out <- hn.Result{stories, nil}
