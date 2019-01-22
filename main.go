@@ -293,6 +293,7 @@ func aggregator(numStories int, ids []int, items <-chan hn.Result, quit chan<- b
 
 }
 
+const multiCallerTimeout = 20 // the timeout (seconds) for multicaller so that it can retry
 // multiCaller runs the given function in mutliple goroutines and
 // returns the return value of the fastest gorouting
 func multiCaller(f func() hn.Result, n int) hn.Result {
@@ -301,7 +302,7 @@ func multiCaller(f func() hn.Result, n int) hn.Result {
 	}
 	results := make(chan hn.Result)
 	done := make(chan bool)
-	defer close(done)
+
 	for i := 0; i < n; i++ {
 		go func(results chan<- hn.Result, done <-chan bool) {
 			result := f()
@@ -313,8 +314,15 @@ func multiCaller(f func() hn.Result, n int) hn.Result {
 	}
 	// TODO: For robustness later check if the result contains an error value
 	// and wait for later results
-	result := <-results
-	return result
+	select {
+	case result := <-results:
+		close(done)
+		return result
+	case <-time.After(multiCallerTimeout * time.Second):
+		close(done)
+		fmt.Println("ReCalling MultiCaller Due to Extensive Delays.")
+		return multiCaller(f, n)
+	}
 }
 
 func IsStoryLink(hnItem hn.Item) bool {
